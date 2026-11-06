@@ -18,7 +18,6 @@ if "inventory_items" not in st.session_state:
     st.session_state.inventory_items = ["Kwikstage Standards 3.0m", "Kwikstage Ledgers 2.5m", "Steel Props Size 2", "H20 Timber Beams", "Formwork Plywood Boards"]
 
 if "transfer_ledger" not in st.session_state:
-    # Seed historic entries mapping directly to physical paper sequences
     st.session_state.transfer_ledger = pd.DataFrame([
         {"Date & Time": "2026-11-05 08:30", "Doc Type": "HD (Hire Delivery)", "Ref Number": "HD-9821", "From": "Durban Yard", "To": "Umhlanga Ridge Project", "Item": "Steel Props Size 2", "Qty": 450, "Driver/Manager": "A. Khumalo"},
         {"Date & Time": "2026-11-05 14:15", "Doc Type": "HR (Hire Return)", "Ref Number": "HR-4402", "From": "Sandton Mall Job", "To": "Joburg Yard", "Item": "Kwikstage Standards 3.0m", "Qty": 150, "Driver/Manager": "J. Botha"},
@@ -36,7 +35,7 @@ def get_site_balance(location, item):
     return (initial_stock + total_in) - total_out
 
 # --- NAVIGATION TABS ---
-tab1, tab2, tab3 = st.tabs(["📊 Stock Levels & Global Search", "📝 Record Paper Book Note", "⚙️ System Registries"])
+tab1, tab2, tab3 = st.tabs(["📊 Stock Levels & Global Search", "📝 Record Paper Book Note", "⚙️ System Registries & Bulk Imports"])
 
 # ==========================================
 # TAB 1: BALANCES & SEARCH
@@ -90,7 +89,7 @@ with tab1:
             st.dataframe(filtered_history, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 2: RECORD NOTE WITH CUSTOM ACCOUNTABILITY BANNER
+# TAB 2: RECORD NOTE WITH ADVANCED CONTROLS
 # ==========================================
 with tab2:
     st.header("📝 New Logbook Entry")
@@ -123,7 +122,6 @@ with tab2:
     is_authorized = True
     
     if is_duplicate:
-        # 🚨 UPDATED POES TEXT TO ENFORCE CORRECT SPELLING 🚨
         st.error(f"❌ Transaction Blocked! Note reference number '{cleaned_ref}' has ALREADY been used and allocated in the system ledger. Moenie n dom POES wees nie!!")
         is_authorized = False
     elif has_deficit:
@@ -163,22 +161,34 @@ with tab2:
     st.dataframe(st.session_state.transfer_ledger, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 3: REGISTRIES
+# TAB 3: REGISTRIES & BULK EXCEL IMPORTER
 # ==========================================
 with tab3:
     st.header("⚙️ Core Database Control Panel")
-    reg_col1, reg_col2 = st.columns(2)
-    with reg_col1:
-        st.subheader("➕ Add Sites/Yards")
-        new_site = st.text_input("Create New Site / Yard Name:")
-        if st.button("Add Location"):
-            if new_site.strip() and new_site.strip() not in st.session_state.locations:
-                st.session_state.locations.append(new_site.strip())
-                st.success("Location Added!")
-    with reg_col2:
-        st.subheader("📦 Add Inventory Item Types")
-        new_product = st.text_input("Enter New Component Description:")
-        if st.button("Register New Item"):
-            if new_product.strip() and new_product.strip() not in st.session_state.inventory_items:
-                st.session_state.inventory_items.append(new_product.strip())
-                st.success("Item Registered!")
+    
+    # --- BRAND NEW EXCEL UPLOADER MODULE ---
+    st.subheader("📥 Bulk Import Stock Fleet via Excel Spreadsheet")
+    st.markdown("Have your team compile your inventory components into Excel with a column heading titled **`Item Description`**. Drop the file below to populate your app dropdown options instantly.")
+    
+    uploaded_file = st.file_uploader("Choose an Excel or CSV spreadsheet file:", type=["xlsx", "csv"])
+    
+    if uploaded_file is not None:
+        try:
+            # Read file type accurately
+            if uploaded_file.name.endswith(".xlsx"):
+                df_excel = pd.read_excel(uploaded_file)
+            else:
+                df_excel = pd.read_csv(uploaded_file)
+                
+            # Search for standard column headers flexibly
+            matched_col = None
+            for col in df_excel.columns:
+                if "description" in str(col).lower() or "item" in str(col).lower() or "product" in str(col).lower():
+                    matched_col = col
+                    break
+            
+            if matched_col:
+                # Strip out unique descriptions cleanly and filter duplicates
+                imported_items = df_excel[matched_col].dropna().astype(str).str.strip().unique()
+                count_added = 0
+                for item in imported_items:
