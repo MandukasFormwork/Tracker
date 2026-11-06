@@ -65,13 +65,16 @@ def process_bulk_file(uploaded_file):
 tab1, tab2, tab3 = st.tabs(["📊 Stock Levels & Global Search", "📝 Record Paper Book Note", "⚙️ System Registries & Bulk Imports"])
 
 # ==========================================
-# TAB 1: BALANCES & SEARCH
+# TAB 1: BALANCES, SITE INSPECTIONS & DRILL-DOWN AUDITS
 # ==========================================
 with tab1:
     col_left, col_right = st.columns(2)
+    
     with col_left:
         st.header("🔍 Global Equipment Locator")
+        st.markdown("*Select any item to see where it is scattered across your entire operation:*")
         search_item = st.selectbox("Choose Equipment to Locate:", st.session_state.inventory_items, key="search_box")
+        
         item_locations = []
         for loc in st.session_state.locations:
             bal = get_site_balance(loc, search_item)
@@ -81,18 +84,36 @@ with tab1:
             st.dataframe(pd.DataFrame(item_locations), use_container_width=True, hide_index=True)
         else:
             st.info(f"No active allocations found.")
+            
     with col_right:
         st.header("📊 Individual Site Inspection")
+        st.markdown("*Select a specific yard or job to pull its live running component balances:*")
         selected_location = st.selectbox("Select Yard or Site to Inspect:", st.session_state.locations)
+        
         balances = []
         for item in st.session_state.inventory_items:
             current_bal = get_site_balance(selected_location, item)
             balances.append({"Equipment Item": item, "Current Balance On-Site": current_bal})
+        
         st.dataframe(pd.DataFrame(balances), use_container_width=True, hide_index=True)
+        
+        # 🎯 NEW LOCAL SITE DRILL-DOWN AUDIT TRAIL LOGIC 🎯
+        st.markdown("---")
+        st.markdown(f"##### 📜 Running History for Specific Gear at **{selected_location}**")
+        audit_item = st.selectbox("Select an item above to see its localized movements:", st.session_state.inventory_items, key="local_audit_box")
+        
+        ledger_df = pd.DataFrame(st.session_state.transfer_ledger)
+        if not ledger_df.empty:
+            # Filter entries where the chosen item was involved AND it moved to OR from the selected location
+            local_history = ledger_df[(ledger_df["Item"] == audit_item) & ((ledger_df["From"] == selected_location) | (ledger_df["To"] == selected_location))]
+            if not local_history.empty:
+                st.dataframe(local_history, use_container_width=True, hide_index=True)
+            else:
+                st.info(f"No recorded movements for '{audit_item}' on the '{selected_location}' logs yet.")
 
     st.markdown("---")
-    st.header("📜 Paper Trail Dispute Resolver")
-    ledger_df = pd.DataFrame(st.session_state.transfer_ledger)
+    st.header("📜 Global Paper Trail Dispute Resolver")
+    st.markdown(f"Refine and audit the historical chain-of-custody log for: **{search_item}**")
     if not ledger_df.empty:
         filtered_history = ledger_df[ledger_df["Item"] == search_item]
         if not filtered_history.empty:
@@ -165,29 +186,3 @@ with tab2:
             st.error("Missing Reference Number!")
         elif not is_authorized:
             if is_duplicate:
-                st.error(f"Submission Denied! Reference number '{cleaned_ref}' already exists in your logbook records.")
-            else:
-                st.error("Transaction Blocked! Invalid override authorization.")
-        else:
-            new_entry = {
-                "Date & Time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "Doc Type": doc_type,
-                "Ref Number": cleaned_ref,
-                "From": from_loc,
-                "To": to_loc,
-                "Item": selected_item,
-                "Qty": int(qty),
-                "Driver/Manager": driver_auth.strip() if driver_auth.strip() else "System Auto"
-            }
-            st.session_state.transfer_ledger = pd.concat([pd.DataFrame([new_entry]), st.session_state.transfer_ledger], ignore_index=True)
-            st.success("Entry Logged!")
-            st.rerun()
-            
-    st.dataframe(st.session_state.transfer_ledger, use_container_width=True, hide_index=True)
-
-# ==========================================
-# TAB 3: REGISTRIES & BULK EXCEL IMPORTER
-# ==========================================
-with tab3:
-    st.header("⚙️ Core Database Control Panel")
-    
