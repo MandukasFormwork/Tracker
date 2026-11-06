@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime
+import time
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Mandukas Stock Loop Tracker", page_icon="🏗️", layout="wide")
@@ -127,7 +128,7 @@ with tab1:
             st.dataframe(filtered_history, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 2: RECORD NOTE (FLATTENED ARRAY-FREE METHOD)
+# TAB 2: RECORD NOTE (VISUAL CONFIRMATION MODE)
 # ==========================================
 with tab2:
     st.header("📝 New Logbook Entry")
@@ -188,5 +189,5 @@ with tab2:
             time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
             manager_initial = driver_auth.strip() if driver_auth.strip() else "System Auto"
             
-            # Bulletproof Row Construction - Zero Brackets
+            # Row Construction
             new_row_data = [[time_now, doc_type, cleaned_ref, from_loc, to_loc, selected_item, int(qty), manager_initial]]
