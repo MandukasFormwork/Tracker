@@ -41,23 +41,21 @@ def process_bulk_file(uploaded_file):
             df = pd.read_excel(uploaded_file)
         else:
             df = pd.read_csv(uploaded_file)
-            
         matched_col = None
         for col in df.columns:
             if "description" in str(col).lower() or "item" in str(col).lower() or "product" in str(col).lower():
                 matched_col = col
                 break
-                
         if matched_col:
             imported_items = df[matched_col].dropna().astype(str).str.strip().unique()
             new_additions = [x for x in imported_items if x not in st.session_state.inventory_items and x.strip() != ""]
             if len(new_additions) > 0:
                 st.session_state.inventory_items.extend(new_additions)
-                st.success(f"🎉 Success! Imported {len(new_additions)} brand new inventory component variants straight into your drop-down lists!")
+                st.success(f"🎉 Success! Imported {len(new_additions)} brand new variants!")
             else:
                 st.info("Spreadsheet parsed successfully, but all components are already present.")
         else:
-            st.error("❌ Format Error! Could not locate an 'Item Description' column header inside the file.")
+            st.error("❌ Format Error! Missing description column header.")
     except Exception as e:
         st.error(f"Error parsing file: {str(e)}")
 
@@ -65,16 +63,14 @@ def process_bulk_file(uploaded_file):
 tab1, tab2, tab3 = st.tabs(["📊 Stock Levels & Global Search", "📝 Record Paper Book Note", "⚙️ System Registries & Bulk Imports"])
 
 # ==========================================
-# TAB 1: BALANCES, SITE INSPECTIONS & DRILL-DOWN AUDITS
+# TAB 1: STOCK LEVELS & SPECIFIC SITE DRILL-DOWN AUDITS
 # ==========================================
 with tab1:
     col_left, col_right = st.columns(2)
     
     with col_left:
         st.header("🔍 Global Equipment Locator")
-        st.markdown("*Select any item to see where it is scattered across your entire operation:*")
         search_item = st.selectbox("Choose Equipment to Locate:", st.session_state.inventory_items, key="search_box")
-        
         item_locations = []
         for loc in st.session_state.locations:
             bal = get_site_balance(loc, search_item)
@@ -87,24 +83,19 @@ with tab1:
             
     with col_right:
         st.header("📊 Individual Site Inspection")
-        st.markdown("*Select a specific yard or job to pull its live running component balances:*")
         selected_location = st.selectbox("Select Yard or Site to Inspect:", st.session_state.locations)
-        
         balances = []
         for item in st.session_state.inventory_items:
             current_bal = get_site_balance(selected_location, item)
             balances.append({"Equipment Item": item, "Current Balance On-Site": current_bal})
-        
         st.dataframe(pd.DataFrame(balances), use_container_width=True, hide_index=True)
         
-        # 🎯 NEW LOCAL SITE DRILL-DOWN AUDIT TRAIL LOGIC 🎯
+        # 🎯 LOCALIZED SITE DRILL-DOWN REPORT ZONE 🎯
         st.markdown("---")
-        st.markdown(f"##### 📜 Running History for Specific Gear at **{selected_location}**")
+        st.markdown(f"##### 📜 History Log for Specific Gear at **{selected_location}**")
         audit_item = st.selectbox("Select an item above to see its localized movements:", st.session_state.inventory_items, key="local_audit_box")
-        
         ledger_df = pd.DataFrame(st.session_state.transfer_ledger)
         if not ledger_df.empty:
-            # Filter entries where the chosen item was involved AND it moved to OR from the selected location
             local_history = ledger_df[(ledger_df["Item"] == audit_item) & ((ledger_df["From"] == selected_location) | (ledger_df["To"] == selected_location))]
             if not local_history.empty:
                 st.dataframe(local_history, use_container_width=True, hide_index=True)
@@ -113,7 +104,6 @@ with tab1:
 
     st.markdown("---")
     st.header("📜 Global Paper Trail Dispute Resolver")
-    st.markdown(f"Refine and audit the historical chain-of-custody log for: **{search_item}**")
     if not ledger_df.empty:
         filtered_history = ledger_df[ledger_df["Item"] == search_item]
         if not filtered_history.empty:
@@ -137,7 +127,7 @@ with tab1:
             st.dataframe(filtered_history, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 2: RECORD NOTE WITH ADVANCED CONTROLS
+# TAB 2: RECORD NOTE (FLATTENED VALIDATION LOGIC)
 # ==========================================
 with tab2:
     st.header("📝 New Logbook Entry")
@@ -160,29 +150,47 @@ with tab2:
     
     cleaned_ref = ref_number.strip().upper()
     existing_refs = list(st.session_state.transfer_ledger["Ref Number"].unique())
-    is_duplicate = cleaned_ref in existing_refs and cleaned_ref != ""
     
+    # Run safety checks cleanly using sequential flags
+    is_duplicate = False
+    if cleaned_ref in existing_refs:
+        if cleaned_ref != "":
+            is_duplicate = True
+            
     available_stock = get_site_balance(from_loc, selected_item)
-    has_deficit = ("Yard" not in from_loc) and (qty > available_stock)
-    
+    has_deficit = False
+    if "Yard" not in from_loc:
+        if qty > available_stock:
+            has_deficit = True
+
+    # Render error windows cleanly with zero structural nesting
     is_authorized = True
-    
     if is_duplicate:
         st.error(f"❌ Transaction Blocked! Note reference number '{cleaned_ref}' has ALREADY been used and allocated in the system ledger. Moenie n dom POES wees nie!!")
         is_authorized = False
-    elif has_deficit:
-        st.warning(f"⚠️ Deficit Warning: '{from_loc}' only holds {available_stock} units. Negative position bypass required.")
-        override_pass = st.text_input("🔒 Senior Password Override Required:", type="password")
-        if override_pass == OVERRIDE_PASSWORD:
-            st.success("✅ Bypass authorized.")
-            is_authorized = True
-        else:
-            if override_pass != "":
-                st.error("❌ Access denied.")
-            is_authorized = False
+        
+    if has_deficit == True:
+        if is_duplicate == False:
+            st.warning(f"⚠️ Deficit Warning: '{from_loc}' only holds {available_stock} units. Bypass required.")
+            override_pass = st.text_input("🔒 Senior Password Override:", type="password")
+            if override_pass == OVERRIDE_PASSWORD:
+                st.success("✅ Bypass authorized.")
+                is_authorized = True
+            else:
+                if override_pass != "":
+                    st.error("❌ Access denied.")
+                is_authorized = False
 
     if st.button("Log Document Entry", type="primary"):
         if not ref_number.strip():
             st.error("Missing Reference Number!")
-        elif not is_authorized:
-            if is_duplicate:
+        elif is_authorized == False:
+            st.error("Submission Denied!")
+        else:
+            new_entry = {
+                "Date & Time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "Doc Type": doc_type,
+                "Ref Number": cleaned_ref,
+                "From": from_loc,
+
+            
