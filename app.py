@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import datetime
-import time
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Mandukas Stock Loop Tracker", page_icon="🏗️", layout="wide")
@@ -11,7 +10,7 @@ st.markdown("### Physical Logbook Matching & Site Allocation System")
 # --- MASTER CONFIG CONSTANTS ---
 OVERRIDE_PASSWORD = "ADMIN"
 
-# --- INITIALIZE DATABASE ---
+# --- INITIALIZE REGISTRIES IN SESSION STATE ---
 if "locations" not in st.session_state:
     st.session_state.locations = ["Durban Yard", "Joburg Yard", "Umhlanga Ridge Project", "Ballito Junction Site", "Sandton Mall Job"]
 
@@ -128,66 +127,54 @@ with tab1:
             st.dataframe(filtered_history, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 2: RECORD NOTE (VISUAL CONFIRMATION MODE)
+# TAB 2: RECORD NOTE (STABLE FORM ENGINE)
 # ==========================================
 with tab2:
     st.header("📝 New Logbook Entry")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        doc_type = st.selectbox("Select Document Type:", ["HD (Hire Delivery)", "HR (Hire Return)", "TRF (Transfer Note)"])
-    with col2:
-        ref_number = st.text_input("Physical Note Reference Number:")
-    with col3:
-        driver_auth = st.text_input("Driver Name / Manager Initial:")
-    st.markdown("---")
-    col4, col5, col6 = st.columns(3)
-    with col4:
-        from_loc = st.selectbox("Source (From):", st.session_state.locations, key="src")
-    with col5:
-        to_loc = st.selectbox("Destination (To):", [l for l in st.session_state.locations if l != from_loc], key="dest")
-    with col6:
-        selected_item = st.selectbox("Select Material Type:", st.session_state.inventory_items)
-    qty = st.number_input("Count of Units:", min_value=1, value=50, step=1)
     
-    cleaned_ref = ref_number.strip().upper()
-    existing_refs = list(st.session_state.transfer_ledger["Ref Number"].unique())
-    
-    is_duplicate = False
-    if cleaned_ref in existing_refs:
-        if cleaned_ref != "":
-            is_duplicate = True
+    # Wrap elements inside a secure form block to prevent screen dropouts
+    with st.form(key="logbook_submission_form", clear_on_submit=True):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            doc_type = st.selectbox("Select Document Type:", ["HD (Hire Delivery)", "HR (Hire Return)", "TRF (Transfer Note)"])
+        with col2:
+            ref_number = st.text_input("Physical Note Reference Number:")
+        with col3:
+            driver_auth = st.text_input("Driver Name / Manager Initial:")
             
-    available_stock = get_site_balance(from_loc, selected_item)
-    has_deficit = False
-    if "Yard" not in from_loc:
-        if qty > available_stock:
-            has_deficit = True
-
-    is_authorized = True
-    if is_duplicate:
-        st.error(f"❌ Transaction Blocked! Note reference number '{cleaned_ref}' has ALREADY been used and allocated in the system ledger. Moenie n dom POES wees nie!!")
-        is_authorized = False
+        st.markdown("---")
+        col4, col5, col6 = st.columns(3)
+        with col4:
+            from_loc = st.selectbox("Source (From):", st.session_state.locations, key="src")
+        with col5:
+            to_loc = st.selectbox("Destination (To):", st.session_state.locations, key="dest")
+        with col6:
+            selected_item = st.selectbox("Select Material Type:", st.session_state.inventory_items)
+            
+        qty = st.number_input("Count of Units:", min_value=1, value=50, step=1)
+        override_pass = st.text_input("🔒 If pushing into negative site balance, enter Senior Password Override:", type="password")
         
-    if has_deficit == True:
-        if is_duplicate == False:
-            st.warning(f"⚠️ Deficit Warning: '{from_loc}' only holds {available_stock} units. Bypass required.")
-            override_pass = st.text_input("🔒 Senior Password Override:", type="password")
-            if override_pass == OVERRIDE_PASSWORD:
-                st.success("✅ Bypass authorized.")
-                is_authorized = True
-            else:
-                if override_pass != "":
-                    st.error("❌ Access denied.")
-                is_authorized = False
-
-    if st.button("Log Document Entry", type="primary"):
+        submit_btn = st.form_submit_button("Log Document Entry", type="primary")
+        
+    if submit_btn:
+        cleaned_ref = ref_number.strip().upper()
+        existing_refs = list(st.session_state.transfer_ledger["Ref Number"].unique())
+        
+        # Validation Validations
+        is_duplicate = cleaned_ref in existing_refs and cleaned_ref != ""
+        available_stock = get_site_balance(from_loc, selected_item)
+        has_deficit = "Yard" not in from_loc and qty > available_stock
+        
         if not ref_number.strip():
             st.error("Missing Reference Number!")
-        elif is_authorized == False:
-            st.error("Submission Denied!")
+        elif from_loc == to_loc:
+            st.error("❌ Source and Destination cannot be the identical location!")
+        elif is_duplicate:
+            st.error(f"❌ Transaction Blocked! Note reference number '{cleaned_ref}' has ALREADY been used and allocated in the system ledger. Moenie n dom POES wees nie!!")
+        elif has_deficit and override_pass != OVERRIDE_PASSWORD:
+            st.error(f"❌ Blocked! '{from_loc}' only holds {available_stock} units. You need a valid Senior Password Override to approve negative balances.")
         else:
             time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
             manager_initial = driver_auth.strip() if driver_auth.strip() else "System Auto"
             
-            # Row Construction
             new_row_data = [[time_now, doc_type, cleaned_ref, from_loc, to_loc, selected_item, int(qty), manager_initial]]
