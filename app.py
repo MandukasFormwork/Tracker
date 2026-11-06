@@ -19,7 +19,7 @@ if "transfer_ledger" not in st.session_state:
     st.session_state.transfer_ledger = pd.DataFrame([
         {"Date & Time": "2026-11-05 08:30", "Doc Type": "HD (Hire Delivery)", "Ref Number": "HD-9821", "From": "Durban Yard", "To": "Umhlanga Ridge Project", "Item": "Steel Props Size 2", "Qty": 450, "Driver/Manager": "A. Khumalo"},
         {"Date & Time": "2026-11-05 14:15", "Doc Type": "HR (Hire Return)", "Ref Number": "HR-4402", "From": "Sandton Mall Job", "To": "Joburg Yard", "Item": "Kwikstage Standards 3.0m", "Qty": 150, "Driver/Manager": "J. Botha"},
-        {"Date & Time": "2026-11-06 10:00", "Doc Type": "TRF (Transfer Note)", "Ref Number": "TRF-0911", "From": "Umhlanga Ridge Project", "To": "Ballito Junction Site", "Item": "H20 Timber Beams", "Qty": 120, "Driver/Manager": "S. Govender"}
+        {"Date & Time": "2026-11-06 10:00", "Doc Type": "TRF (Transfer Note)", "Ref Number": "TRF-0911", "From": "Umhlanga Ridge Project", "To": "Ballito Junction Site", "Item": "Steel Props Size 2", "Qty": 200, "Driver/Manager": "S. Govender"}
     ])
 
 # --- STOCK CALCULATION LOGIC ---
@@ -34,21 +34,42 @@ def get_site_balance(location, item):
     return (initial_stock + total_in) - total_out
 
 # --- NAVIGATION TABS ---
-tab1, tab2, tab3 = st.tabs(["📊 Live Site Stock Levels", "📝 Record Paper Book Note", "➕ Register New Projects/Yards"])
+tab1, tab2, tab3 = st.tabs(["📊 Stock Levels & Global Search", "📝 Record Paper Book Note", "➕ Register New Projects/Yards"])
 
 # ==========================================
-# TAB 1: LIVE SITE BALANCES
+# TAB 1: LIVE SITE BALANCES & GLOBAL SEARCH
 # ==========================================
 with tab1:
-    st.header("📊 Current Stock On-Site")
-    selected_location = st.selectbox("Select Yard or Construction Site to Inspect:", st.session_state.locations)
+    col_left, col_right = st.columns(2)
     
-    balances = []
-    for item in st.session_state.inventory_items:
-        current_bal = get_site_balance(selected_location, item)
-        balances.append({"Equipment Item": item, "Current Balance On-Site": current_bal})
-    
-    st.dataframe(pd.DataFrame(balances), use_container_width=True, hide_index=True)
+    with col_left:
+        st.header("🔍 Global Equipment Locator")
+        st.markdown("*Select any item below to instantly see exactly which yards and project sites it is currently sitting at:*")
+        search_item = st.selectbox("Choose Equipment to Locate:", st.session_state.inventory_items, key="search_box")
+        
+        # Calculate location breakdown for selected item
+        item_locations = []
+        for loc in st.session_state.locations:
+            bal = get_site_balance(loc, search_item)
+            if bal > 0:  # Only show locations that actually have stock
+                item_locations.append({"Location / Site": loc, "Quantity On-Site": bal})
+        
+        if item_locations:
+            st.dataframe(pd.DataFrame(item_locations), use_container_width=True, hide_index=True)
+        else:
+            st.info(f"No active allocations found for {search_item} across any sites.")
+
+    with col_right:
+        st.header("📊 Individual Site Inspection")
+        st.markdown("*Select a specific yard or construction job to view its full component manifest:*")
+        selected_location = st.selectbox("Select Yard or Construction Site to Inspect:", st.session_state.locations)
+        
+        balances = []
+        for item in st.session_state.inventory_items:
+            current_bal = get_site_balance(selected_location, item)
+            balances.append({"Equipment Item": item, "Current Balance On-Site": current_bal})
+        
+        st.dataframe(pd.DataFrame(balances), use_container_width=True, hide_index=True)
 
 # ==========================================
 # TAB 2: LOGBOOK ROUTING ENGINE
