@@ -71,6 +71,28 @@ with tab1:
         
         st.dataframe(pd.DataFrame(balances), use_container_width=True, hide_index=True)
 
+    # --- BRAND NEW AUDIT LOG SECTION ---
+    st.markdown("---")
+    st.header("📜 Paper Trail Dispute Resolver (Item Audit History)")
+    st.markdown(f"Showing complete chain-of-custody and delivery history for: **{search_item}**")
+    
+    # Filter the entire central ledger down to just transactions containing this specific item
+    ledger_df = pd.DataFrame(st.session_state.transfer_ledger)
+    if not ledger_df.empty:
+        filtered_history = ledger_df[ledger_df["Item"] == search_item]
+        
+        # Add an optional sub-filter to narrow down to a specific site dispute
+        site_filter = st.selectbox("Optional: Filter history further by a specific Site/Yard:", ["All Sites"] + st.session_state.locations)
+        if site_filter != "All Sites":
+            filtered_history = filtered_history[(filtered_history["From"] == site_filter) | (filtered_history["To"] == site_filter)]
+        
+        if not filtered_history.empty:
+            st.dataframe(filtered_history, use_container_width=True, hide_index=True)
+        else:
+            st.info(f"No physical delivery or return notes have been recorded for '{search_item}' involving '{site_filter}' yet.")
+    else:
+        st.info("The transaction ledger is currently empty.")
+
 # ==========================================
 # TAB 2: LOGBOOK ROUTING ENGINE
 # ==========================================
