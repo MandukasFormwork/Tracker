@@ -32,7 +32,6 @@ def get_site_balance(location, item):
         return 0
     total_in = ledger[(ledger["To"] == location) & (ledger["Item"] == item)]["Qty"].sum()
     total_out = ledger[(ledger["From"] == location) & (ledger["Item"] == item)]["Qty"].sum()
-    # Base reserve assumptions for main yards
     initial_stock = 10000 if "Yard" in location else 0
     return (initial_stock + total_in) - total_out
 
@@ -91,7 +90,7 @@ with tab1:
             st.dataframe(filtered_history, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 2: RECORD NOTE WITH SECURITY & DUPLICATION PROTECTION
+# TAB 2: RECORD NOTE WITH CUSTOM ACCOUNTABILITY BANNER
 # ==========================================
 with tab2:
     st.header("📝 New Logbook Entry")
@@ -112,29 +111,30 @@ with tab2:
         selected_item = st.selectbox("Select Material Type:", st.session_state.inventory_items)
     qty = st.number_input("Count of Units:", min_value=1, value=50, step=1)
     
-    # 🚨 DYNAMIC DUPLICATION CHECK 🚨
+    # Dynamic Duplication Check
     cleaned_ref = ref_number.strip().upper()
     existing_refs = list(st.session_state.transfer_ledger["Ref Number"].unique())
     is_duplicate = cleaned_ref in existing_refs and cleaned_ref != ""
     
-    # Pre-check available quantities to catch deficits instantly
+    # Pre-check available quantities
     available_stock = get_site_balance(from_loc, selected_item)
     has_deficit = ("Yard" not in from_loc) and (qty > available_stock)
     
     is_authorized = True
     
     if is_duplicate:
-        st.error(f"❌ Transaction Blocked! Note reference number '{cleaned_ref}' has ALREADY been used and allocated in the system ledger. You cannot duplicate physical books.")
+        # 🚨 UPDATED POES TEXT TO ENFORCE CORRECT SPELLING 🚨
+        st.error(f"❌ Transaction Blocked! Note reference number '{cleaned_ref}' has ALREADY been used and allocated in the system ledger. Moenie n dom POES wees nie!!")
         is_authorized = False
     elif has_deficit:
-        st.warning(f"⚠️ Deficit Detected! '{from_loc}' only holds {available_stock} units. Override required.")
-        override_pass = st.text_input("🔒 Senior Password Override:", type="password")
+        st.warning(f"⚠️ Deficit Warning: '{from_loc}' only holds {available_stock} units. Negative position bypass required.")
+        override_pass = st.text_input("🔒 Senior Password Override Required:", type="password")
         if override_pass == OVERRIDE_PASSWORD:
             st.success("✅ Bypass authorized.")
             is_authorized = True
         else:
             if override_pass != "":
-                st.error("❌ Invalid passcode.")
+                st.error("❌ Access denied.")
             is_authorized = False
 
     if st.button("Log Document Entry", type="primary"):
@@ -142,7 +142,7 @@ with tab2:
             st.error("Missing Reference Number!")
         elif not is_authorized:
             if is_duplicate:
-                st.error("Submission Denied! Reference number already exists in your logbook records.")
+                st.error(f"Submission Denied! Reference number '{cleaned_ref}' already exists in your logbook records.")
             else:
                 st.error("Transaction Blocked! Invalid override authorization.")
         else:
