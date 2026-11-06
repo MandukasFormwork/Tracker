@@ -1,38 +1,45 @@
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import datetime
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Mandukas Stock Loop Tracker", page_icon="🏗️", layout="wide")
 st.title("🏗️ Mandukas Stock Loop Tracker")
-st.markdown("### Physical Logbook Matching & Site Allocation System")
+st.markdown("### Physical Logbook Matching & Cloud Google Sheets Database Integration")
 
 # --- MASTER CONFIG CONSTANTS ---
-OVERRIDE_PASSWORD = "ADMIN"  # Change this to whatever password you want your branch directors to use
+OVERRIDE_PASSWORD = "ADMIN"
 
-# --- INITIALIZE DATABASE ---
+# --- CONNECT TO LIVE GOOGLE SHEET ---
+try:
+    conn = st.connection("gsheets", type=GSheetsConnection)
+    # Read the live sheet ledger entries
+    ledger_df = conn.read(ttl="0m") # ttl="0m" forces the app to fetch fresh data on every action
+except Exception as e:
+    st.error("⚠️ Connection Error: Please ensure your Google Sheet credentials are pasted into your Streamlit App Secrets.")
+    ledger_df = pd.DataFrame()
+
+# --- INITIALIZE REGISTRIES IN MEMORY ---
+# (Can be expanded to sheet tabs later if needed)
 if "locations" not in st.session_state:
     st.session_state.locations = ["Durban Yard", "Joburg Yard", "Umhlanga Ridge Project", "Ballito Junction Site", "Sandton Mall Job"]
 
 if "inventory_items" not in st.session_state:
     st.session_state.inventory_items = ["Kwikstage Standards 3.0m", "Kwikstage Ledgers 2.5m", "Steel Props Size 2", "H20 Timber Beams", "Formwork Plywood Boards"]
 
-if "transfer_ledger" not in st.session_state:
-    st.session_state.transfer_ledger = pd.DataFrame([
-        {"Date & Time": "2026-11-05 08:30", "Doc Type": "HD (Hire Delivery)", "Ref Number": "HD-9821", "From": "Durban Yard", "To": "Umhlanga Ridge Project", "Item": "Steel Props Size 2", "Qty": 450, "Driver/Manager": "A. Khumalo"},
-        {"Date & Time": "2026-11-05 14:15", "Doc Type": "HR (Hire Return)", "Ref Number": "HR-4402", "From": "Sandton Mall Job", "To": "Joburg Yard", "Item": "Kwikstage Standards 3.0m", "Qty": 150, "Driver/Manager": "J. Botha"},
-        {"Date & Time": "2026-11-06 10:00", "Doc Type": "TRF (Transfer Note)", "Ref Number": "TRF-0911", "From": "Umhlanga Ridge Project", "To": "Ballito Junction Site", "Item": "Steel Props Size 2", "Qty": 200, "Driver/Manager": "S. Govender"}
-    ])
-
 # --- STOCK CALCULATION LOGIC ---
-def get_site_balance(location, item):
-    ledger = pd.DataFrame(st.session_state.transfer_ledger)
-    if ledger.empty:
-        return 0
-    total_in = ledger[(ledger["To"] == location) & (ledger["Item"] == item)]["Qty"].sum()
-    total_out = ledger[(ledger["From"] == location) & (ledger["Item"] == item)]["Qty"].sum()
+def get_site_balance(location, item, current_df):
+    if current_df.empty or "From" not in current_df.columns:
+        return 10000 if "Yard" in location else 0
+    
+    # Ensure standard types for reliable calculation
+    current_df["Qty"] = pd.to_numeric(current_df["Qty"], errors='coerce').fillna(0)
+    
+    total_in = current_df[(current_df["To"] == location) & (current_df["Item"] == item)]["Qty"].sum()
+    total_out = current_df[(current_df["From"] == location) & (current_df["Item"] == item)]["Qty"].sum()
     initial_stock = 10000 if "Yard" in location else 0
-    return (initial_stock + total_in) - total_out
+    return int((initial_stock + total_in) - total_out)
 
 # --- NAVIGATION TABS ---
 tab1, tab2, tab3 = st.tabs(["📊 Stock Levels & Global Search", "📝 Record Paper Book Note", "⚙️ System Registries"])
@@ -47,26 +54,26 @@ with tab1:
         search_item = st.selectbox("Choose Equipment to Locate:", st.session_state.inventory_items, key="search_box")
         item_locations = []
         for loc in st.session_state.locations:
-            bal = get_site_balance(loc, search_item)
+            bal = get_site_balance(loc, search_item, ledger_df)
             if bal > 0:
                 item_locations.append({"Location / Site": loc, "Quantity On-Site": bal})
         if item_locations:
             st.dataframe(pd.DataFrame(item_locations), use_container_width=True, hide_index=True)
         else:
             st.info(f"No active allocations found.")
+            
     with col_right:
         st.header("📊 Individual Site Inspection")
         selected_location = st.selectbox("Select Yard or Site to Inspect:", st.session_state.locations)
         balances = []
         for item in st.session_state.inventory_items:
-            current_bal = get_site_balance(selected_location, item)
+            current_bal = get_site_balance(selected_location, item, ledger_df)
             balances.append({"Equipment Item": item, "Current Balance On-Site": current_bal})
         st.dataframe(pd.DataFrame(balances), use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.header("📜 Paper Trail Dispute Resolver")
-    ledger_df = pd.DataFrame(st.session_state.transfer_ledger)
-    if not ledger_df.empty:
+    if not ledger_df.empty and "Item" in ledger_df.columns:
         filtered_history = ledger_df[ledger_df["Item"] == search_item]
         if not filtered_history.empty:
             f_col1, f_col2, f_col3, f_col4 = st.columns(4)
@@ -89,7 +96,7 @@ with tab1:
             st.dataframe(filtered_history, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 2: RECORD NOTE WITH SECURITY OVERRIDE
+# TAB 2: RECORD NOTE WITH CLOUD BACKUP
 # ==========================================
 with tab2:
     st.header("📝 New Logbook Entry")
@@ -110,29 +117,29 @@ with tab2:
         selected_item = st.selectbox("Select Material Type:", st.session_state.inventory_items)
     qty = st.number_input("Count of Units:", min_value=1, value=50, step=1)
     
-    # Pre-check available quantities to catch deficits instantly
-    available_stock = get_site_balance(from_loc, selected_item)
+    available_stock = get_site_balance(from_loc, selected_item, ledger_df)
     has_deficit = ("Yard" not in from_loc) and (qty > available_stock)
     
     is_authorized = True
     if has_deficit:
-        st.warning(f"⚠️ Deficit Detected! '{from_loc}' only holds {available_stock} units of {selected_item}. Entering this will push the site balance into a negative position.")
+        st.warning(f"⚠️ Deficit Detected! '{from_loc}' only holds {available_stock} units. Negative balance entry triggered.")
         override_pass = st.text_input("🔒 Senior Password Override Required to Force Entry:", type="password")
         if override_pass == OVERRIDE_PASSWORD:
-            st.success("✅ Senior Credentials Verified. Negative entry bypass authorized.")
+            st.success("✅ Senior Credentials Verified.")
             is_authorized = True
         else:
             if override_pass != "":
-                st.error("❌ Invalid Override Passcode. Transaction blocked.")
+                st.error("❌ Invalid Override Passcode.")
             is_authorized = False
 
     if st.button("Log Document Entry", type="primary"):
         if not ref_number.strip():
             st.error("Missing Reference Number!")
         elif not is_authorized:
-            st.error("Transaction Blocked! You must provide a valid Senior Password Override to approve short-allocations.")
+            st.error("Transaction Blocked! Invalid override authorization.")
         else:
-            new_entry = {
+            # Construct a row mapping exactly to our column layout headers
+            new_entry = pd.DataFrame([{
                 "Date & Time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "Doc Type": doc_type,
                 "Ref Number": ref_number.strip().upper(),
@@ -140,14 +147,20 @@ with tab2:
                 "To": to_loc,
                 "Item": selected_item,
                 "Qty": int(qty),
-                "Driver/Manager": driver_auth.strip() if driver_auth.strip() else "System Auto"
-            }
-            st.session_state.transfer_ledger = pd.concat([pd.DataFrame([new_entry]), st.session_state.transfer_ledger], ignore_index=True)
-            st.success("Entry Logged!")
+                "Driver/Manager": driver_auth.strip() if driver_auth.strip() else "Yard Team"
+            }])
+            
+            # Combine old sheet data with the new entry line
+            updated_df = pd.concat([ledger_df, new_entry], ignore_index=True)
+            
+            # Update the live google spreadsheet securely 
+            conn.update(spreadsheet=st.secrets["connections"]["gsheets"]["spreadsheet"], data=updated_df)
+            st.success("🎉 Entry successfully locked to Google Cloud Sheet!")
+            st.rerun()
             
     st.markdown("---")
-    st.subheader("📋 Central Operations Ledger Log")
-    st.dataframe(st.session_state.transfer_ledger, use_container_width=True, hide_index=True)
+    st.subheader("📋 Central Operations Ledger Log (Live Cloud Database)")
+    st.dataframe(ledger_df, use_container_width=True, hide_index=True)
 
 # ==========================================
 # TAB 3: REGISTRIES
