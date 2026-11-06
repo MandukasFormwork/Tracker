@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import datetime
-import time
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Mandukas Stock Loop Tracker", page_icon="🏗️", layout="wide")
@@ -123,10 +122,12 @@ with tab1:
             st.dataframe(filtered_history, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 2: RECORD NOTE (SPINNING WHEEL CONFIRMATION)
+# TAB 2: RECORD NOTE (BULLETPROOF DIRECT WRITE)
 # ==========================================
 with tab2:
     st.header("📝 Record Physical Delivery / Return Book Note")
+    
+    # Message banner box locked right at the top
     msg_box = st.container()
 
     col1, col2, col3 = st.columns(3)
@@ -151,11 +152,12 @@ with tab2:
     
     if st.button("Log Document Entry", type="primary", key="submit_action_btn"):
         cleaned_ref = ref_number.strip().upper()
-        ledger_df = pd.DataFrame(st.session_state.transfer_ledger)
+        current_ledger = pd.DataFrame(st.session_state.transfer_ledger)
         
+        # Check for duplication across your active record list
         is_duplicate = False
-        if not ledger_df.empty and "Ref Number" in ledger_df.columns:
-            is_duplicate = cleaned_ref in list(ledger_df["Ref Number"].unique()) and cleaned_ref != ""
+        if not current_ledger.empty and "Ref Number" in current_ledger.columns:
+            is_duplicate = cleaned_ref in current_ledger["Ref Number"].astype(str).values and cleaned_ref != ""
             
         available_stock = get_site_balance(from_loc, selected_item)
         has_deficit = "Yard" not in from_loc and qty > available_stock
@@ -170,9 +172,7 @@ with tab2:
             elif has_deficit and override_pass != OVERRIDE_PASSWORD:
                 st.error(f"❌ Blocked! '{from_loc}' only holds {available_stock} units. Senior Password Override required.")
             else:
-                # 🚨 VISUAL SPINNER WHEEL ACTIVATED HERE 🚨
-                with st.spinner("Locking physical book note into system database ledger..."):
-                    time.sleep(1.0) # Short artificial delay so they see the wheel spin
-                    time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                    manager_initial = driver_auth.strip() if driver_auth.strip() else "System Auto"
-                    
+                # Direct array save with zero loop reloads
+                time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                manager_initial = driver_auth.strip() if driver_auth.strip() else "System Auto"
+                
