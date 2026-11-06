@@ -34,6 +34,33 @@ def get_site_balance(location, item):
     initial_stock = 10000 if "Yard" in location else 0
     return (initial_stock + total_in) - total_out
 
+# --- BULK FILE EXCEL PARSER FUNCTION ---
+def process_bulk_file(uploaded_file):
+    try:
+        if uploaded_file.name.endswith(".xlsx"):
+            df = pd.read_excel(uploaded_file)
+        else:
+            df = pd.read_csv(uploaded_file)
+            
+        matched_col = None
+        for col in df.columns:
+            if "description" in str(col).lower() or "item" in str(col).lower() or "product" in str(col).lower():
+                matched_col = col
+                break
+                
+        if matched_col:
+            imported_items = df[matched_col].dropna().astype(str).str.strip().unique()
+            new_additions = [x for x in imported_items if x not in st.session_state.inventory_items and x.strip() != ""]
+            if len(new_additions) > 0:
+                st.session_state.inventory_items.extend(new_additions)
+                st.success(f"🎉 Success! Imported {len(new_additions)} brand new inventory component variants straight into your drop-down lists!")
+            else:
+                st.info("Spreadsheet parsed successfully, but all components are already present.")
+        else:
+            st.error("❌ Format Error! Could not locate an 'Item Description' column header inside the file.")
+    except Exception as e:
+        st.error(f"Error parsing file: {str(e)}")
+
 # --- NAVIGATION TABS ---
 tab1, tab2, tab3 = st.tabs(["📊 Stock Levels & Global Search", "📝 Record Paper Book Note", "⚙️ System Registries & Bulk Imports"])
 
@@ -164,28 +191,3 @@ with tab2:
 with tab3:
     st.header("⚙️ Core Database Control Panel")
     
-    st.subheader("📥 Bulk Import Stock Fleet via Excel Spreadsheet")
-    st.markdown("Have your team compile your inventory components into Excel with a column heading titled **`Item Description`**.")
-    
-    uploaded_file = st.file_uploader("Choose an Excel or CSV spreadsheet file:", type=["xlsx", "csv"])
-    
-    if uploaded_file is not None:
-        try:
-            if uploaded_file.name.endswith(".xlsx"):
-                df_excel = pd.read_excel(uploaded_file)
-            else:
-                df_excel = pd.read_csv(uploaded_file)
-                
-            matched_col = None
-            for col in df_excel.columns:
-                if "description" in str(col).lower() or "item" in str(col).lower() or "product" in str(col).lower():
-                    matched_col = col
-                    break
-            
-            if matched_col:
-                imported_items = df_excel[matched_col].dropna().astype(str).str.strip().unique()
-                # Simplified, flat loop logic to prevent Indentation Errors completely
-                new_additions = [x for x in imported_items if x not in st.session_state.inventory_items and x.strip() != ""]
-                
-                if len(new_additions) > 0:
-                    st.session_state.inventory_items.extend(new_additions)
