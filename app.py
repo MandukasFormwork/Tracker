@@ -63,11 +63,10 @@ def process_bulk_file(uploaded_file):
 tab1, tab2, tab3 = st.tabs(["📊 Stock Levels & Global Search", "📝 Record Paper Book Note", "⚙️ System Registries & Bulk Imports"])
 
 # ==========================================
-# TAB 1: STOCK LEVELS & SPECIFIC SITE DRILL-DOWN AUDITS
+# TAB 1: STOCK LEVELS & DRILL-DOWNS
 # ==========================================
 with tab1:
     col_left, col_right = st.columns(2)
-    
     with col_left:
         st.header("🔍 Global Equipment Locator")
         search_item = st.selectbox("Choose Equipment to Locate:", st.session_state.inventory_items, key="search_box")
@@ -127,54 +126,53 @@ with tab1:
             st.dataframe(filtered_history, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 2: RECORD NOTE (STABLE FORM ENGINE)
+# TAB 2: RECORD NOTE (DIRECT INPUT REGIME)
 # ==========================================
 with tab2:
-    st.header("📝 New Logbook Entry")
+    st.header("📝 Record Physical Delivery / Return Book Note")
     
-    # Wrap elements inside a secure form block to prevent screen dropouts
-    with st.form(key="logbook_submission_form", clear_on_submit=True):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            doc_type = st.selectbox("Select Document Type:", ["HD (Hire Delivery)", "HR (Hire Return)", "TRF (Transfer Note)"])
-        with col2:
-            ref_number = st.text_input("Physical Note Reference Number:")
-        with col3:
-            driver_auth = st.text_input("Driver Name / Manager Initial:")
-            
-        st.markdown("---")
-        col4, col5, col6 = st.columns(3)
-        with col4:
-            from_loc = st.selectbox("Source (From):", st.session_state.locations, key="src")
-        with col5:
-            to_loc = st.selectbox("Destination (To):", st.session_state.locations, key="dest")
-        with col6:
-            selected_item = st.selectbox("Select Material Type:", st.session_state.inventory_items)
-            
-        qty = st.number_input("Count of Units:", min_value=1, value=50, step=1)
-        override_pass = st.text_input("🔒 If pushing into negative site balance, enter Senior Password Override:", type="password")
+    # Persistent status messaging container
+    msg_box = st.container()
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        doc_type = st.selectbox("Select Document Type:", ["HD (Hire Delivery)", "HR (Hire Return)", "TRF (Transfer Note)"])
+    with col2:
+        ref_number = st.text_input("Physical Note Reference Number:", value="", key="entry_ref")
+    with col3:
+        driver_auth = st.text_input("Driver Name / Manager Initial:", value="", key="entry_auth")
         
-        submit_btn = st.form_submit_button("Log Document Entry", type="primary")
+    st.markdown("---")
+    col4, col5, col6 = st.columns(3)
+    with col4:
+        from_loc = st.selectbox("Source (From):", st.session_state.locations, key="src_loc")
+    with col5:
+        to_loc = st.selectbox("Destination (To):", st.session_state.locations, key="dest_loc")
+    with col6:
+        selected_item = st.selectbox("Select Material Type:", st.session_state.inventory_items, key="item_loc")
         
-    if submit_btn:
+    qty = st.number_input("Count of Units:", min_value=1, value=50, step=1, key="qty_loc")
+    override_pass = st.text_input("🔒 Password Override for Negative Balance Bypasses:", type="password", key="pass_loc")
+    
+    if st.button("Log Document Entry", type="primary", key="submit_action_btn"):
         cleaned_ref = ref_number.strip().upper()
         existing_refs = list(st.session_state.transfer_ledger["Ref Number"].unique())
         
-        # Validation Validations
         is_duplicate = cleaned_ref in existing_refs and cleaned_ref != ""
         available_stock = get_site_balance(from_loc, selected_item)
         has_deficit = "Yard" not in from_loc and qty > available_stock
         
-        if not ref_number.strip():
-            st.error("Missing Reference Number!")
-        elif from_loc == to_loc:
-            st.error("❌ Source and Destination cannot be the identical location!")
-        elif is_duplicate:
-            st.error(f"❌ Transaction Blocked! Note reference number '{cleaned_ref}' has ALREADY been used and allocated in the system ledger. Moenie n dom POES wees nie!!")
-        elif has_deficit and override_pass != OVERRIDE_PASSWORD:
-            st.error(f"❌ Blocked! '{from_loc}' only holds {available_stock} units. You need a valid Senior Password Override to approve negative balances.")
-        else:
-            time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-            manager_initial = driver_auth.strip() if driver_auth.strip() else "System Auto"
-            
-            new_row_data = [[time_now, doc_type, cleaned_ref, from_loc, to_loc, selected_item, int(qty), manager_initial]]
+        with msg_box:
+            if not ref_number.strip():
+                st.error("❌ Rejected! Missing Reference Number from the paper book.")
+            elif from_loc == to_loc:
+                st.error("❌ Format Error! Source and Destination cannot be the same site location.")
+            elif is_duplicate:
+                st.error(f"❌ Transaction Blocked! Note reference number '{cleaned_ref}' has ALREADY been used and allocated in the system ledger. Moenie n dom POES wees nie!!")
+            elif has_deficit and override_pass != OVERRIDE_PASSWORD:
+                st.error(f"❌ Blocked! '{from_loc}' only holds {available_stock} units. Senior Password Override required.")
+            else:
+                time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                manager_initial = driver_auth.strip() if driver_auth.strip() else "System Auto"
+                
+                # Direct app append bypass row entry
