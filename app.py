@@ -44,14 +44,14 @@ with tab1:
     
     with col_left:
         st.header("🔍 Global Equipment Locator")
-        st.markdown("*Select any item below to instantly see exactly which yards and project sites it is currently sitting at:*")
+        st.markdown("*Select any item below to see exactly which yards and project sites it is currently sitting at:*")
         search_item = st.selectbox("Choose Equipment to Locate:", st.session_state.inventory_items, key="search_box")
         
         # Calculate location breakdown for selected item
         item_locations = []
         for loc in st.session_state.locations:
             bal = get_site_balance(loc, search_item)
-            if bal > 0:  # Only show locations that actually have stock
+            if bal > 0:
                 item_locations.append({"Location / Site": loc, "Quantity On-Site": bal})
         
         if item_locations:
@@ -71,25 +71,58 @@ with tab1:
         
         st.dataframe(pd.DataFrame(balances), use_container_width=True, hide_index=True)
 
-    # --- BRAND NEW AUDIT LOG SECTION ---
+    # --- ADVANCED AUDIT LOG SECTION ---
     st.markdown("---")
-    st.header("📜 Paper Trail Dispute Resolver (Item Audit History)")
-    st.markdown(f"Showing complete chain-of-custody and delivery history for: **{search_item}**")
+    st.header("📜 Paper Trail Dispute Resolver")
+    st.markdown(f"Refine and audit the historical chain-of-custody log for: **{search_item}**")
     
-    # Filter the entire central ledger down to just transactions containing this specific item
+    # Extract baseline history for this item
     ledger_df = pd.DataFrame(st.session_state.transfer_ledger)
     if not ledger_df.empty:
         filtered_history = ledger_df[ledger_df["Item"] == search_item]
         
-        # Add an optional sub-filter to narrow down to a specific site dispute
-        site_filter = st.selectbox("Optional: Filter history further by a specific Site/Yard:", ["All Sites"] + st.session_state.locations)
-        if site_filter != "All Sites":
-            filtered_history = filtered_history[(filtered_history["From"] == site_filter) | (filtered_history["To"] == site_filter)]
-        
         if not filtered_history.empty:
-            st.dataframe(filtered_history, use_container_width=True, hide_index=True)
+            # Generate the dynamic breakdown columns for dropdown selections
+            st.markdown("#### 🛠️ Deep-Dive Column Dropdown Filters:")
+            f_col1, f_col2, f_col3, f_col4 = st.columns(4)
+            
+            with f_col1:
+                unique_docs = ["Show All"] + list(filtered_history["Doc Type"].unique())
+                sel_doc = st.selectbox("Filter by Doc Type:", unique_docs)
+                
+            with f_col2:
+                unique_refs = ["Show All"] + list(filtered_history["Ref Number"].unique())
+                sel_ref = st.selectbox("Filter by Ref Number:", unique_refs)
+                
+            with f_col3:
+                unique_sites = ["Show All"] + st.session_state.locations
+                sel_site = st.selectbox("Filter by Site Involved:", unique_sites)
+                
+            with f_col4:
+                unique_managers = ["Show All"] + list(filtered_history["Driver/Manager"].unique())
+                sel_manager = st.selectbox("Filter by Driver/Manager:", unique_managers)
+            
+            # Apply individual dropdown filters iteratively if modified
+            if sel_doc != "Show All":
+                filtered_history = filtered_history[filtered_history["Doc Type"] == sel_doc]
+                
+            if sel_ref != "Show All":
+                filtered_history = filtered_history[filtered_history["Ref Number"] == sel_ref]
+                
+            if sel_site != "Show All":
+                filtered_history = filtered_history[(filtered_history["From"] == sel_site) | (filtered_history["To"] == sel_site)]
+                
+            if sel_manager != "Show All":
+                filtered_history = filtered_history[filtered_history["Driver/Manager"] == sel_manager]
+            
+            # Display Final Filtered Data
+            st.markdown("##### Filtered Book Records Ledger Result:")
+            if not filtered_history.empty:
+                st.dataframe(filtered_history, use_container_width=True, hide_index=True)
+            else:
+                st.warning("No records match that specific combination of dropdown parameters.")
         else:
-            st.info(f"No physical delivery or return notes have been recorded for '{search_item}' involving '{site_filter}' yet.")
+            st.info(f"No physical delivery or return notes have been recorded for '{search_item}' yet.")
     else:
         st.info("The transaction ledger is currently empty.")
 
@@ -124,7 +157,6 @@ with tab2:
         if not ref_number.strip():
             st.error("Transaction rejected! You must supply a valid Reference Number from the physical logbook.")
         else:
-            # Enforce stock verification for project-to-project allocations
             available_stock = get_site_balance(from_loc, selected_item)
             if "Yard" not in from_loc and qty > available_stock:
                 st.error(f"Deficit Blocked! '{from_loc}' only holds {available_stock} units of {selected_item}. You cannot move {qty}.")
@@ -160,6 +192,3 @@ with tab3:
     if st.button("Add Location to Registry"):
         if new_site.strip() and new_site.strip() not in st.session_state.locations:
             st.session_state.locations.append(new_site.strip())
-            st.success(f"'{new_site.strip()}' added to your tracking map.")
-        else:
-            st.error("Invalid or duplicate location name.")
