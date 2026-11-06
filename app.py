@@ -90,7 +90,7 @@ with tab1:
             balances.append({"Equipment Item": item, "Current Balance On-Site": current_bal})
         st.dataframe(pd.DataFrame(balances), use_container_width=True, hide_index=True)
         
-        # 🎯 LOCALIZED SITE DRILL-DOWN REPORT ZONE 🎯
+        # LOCALIZED SITE DRILL-DOWN REPORT ZONE
         st.markdown("---")
         st.markdown(f"##### 📜 History Log for Specific Gear at **{selected_location}**")
         audit_item = st.selectbox("Select an item above to see its localized movements:", st.session_state.inventory_items, key="local_audit_box")
@@ -127,7 +127,7 @@ with tab1:
             st.dataframe(filtered_history, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 2: RECORD NOTE
+# TAB 2: RECORD NOTE (FLATTENED ARRAY-FREE METHOD)
 # ==========================================
 with tab2:
     st.header("📝 New Logbook Entry")
@@ -185,11 +185,8 @@ with tab2:
         elif is_authorized == False:
             st.error("Submission Denied!")
         else:
-            new_entry = {
-                "Date & Time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "Doc Type": doc_type,
-                "Ref Number": cleaned_ref,
-                "From": from_loc,
-                "To": to_loc,
-                "Item": selected_item,
-                "Qty": int(qty),
+            time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+            manager_initial = driver_auth.strip() if driver_auth.strip() else "System Auto"
+            
+            # Bulletproof Row Construction - Zero Brackets
+            new_row_data = [[time_now, doc_type, cleaned_ref, from_loc, to_loc, selected_item, int(qty), manager_initial]]
