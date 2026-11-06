@@ -7,6 +7,9 @@ st.set_page_config(page_title="Mandukas Stock Loop Tracker", page_icon="🏗️"
 st.title("🏗️ Mandukas Stock Loop Tracker")
 st.markdown("### Physical Logbook Matching & Site Allocation System")
 
+# --- MASTER CONFIG CONSTANTS ---
+OVERRIDE_PASSWORD = "ADMIN"  # Change this to whatever password you want your branch directors to use
+
 # --- INITIALIZE DATABASE ---
 if "locations" not in st.session_state:
     st.session_state.locations = ["Durban Yard", "Joburg Yard", "Umhlanga Ridge Project", "Ballito Junction Site", "Sandton Mall Job"]
@@ -86,7 +89,7 @@ with tab1:
             st.dataframe(filtered_history, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 2: RECORD NOTE
+# TAB 2: RECORD NOTE WITH SECURITY OVERRIDE
 # ==========================================
 with tab2:
     st.header("📝 New Logbook Entry")
@@ -106,9 +109,28 @@ with tab2:
     with col6:
         selected_item = st.selectbox("Select Material Type:", st.session_state.inventory_items)
     qty = st.number_input("Count of Units:", min_value=1, value=50, step=1)
+    
+    # Pre-check available quantities to catch deficits instantly
+    available_stock = get_site_balance(from_loc, selected_item)
+    has_deficit = ("Yard" not in from_loc) and (qty > available_stock)
+    
+    is_authorized = True
+    if has_deficit:
+        st.warning(f"⚠️ Deficit Detected! '{from_loc}' only holds {available_stock} units of {selected_item}. Entering this will push the site balance into a negative position.")
+        override_pass = st.text_input("🔒 Senior Password Override Required to Force Entry:", type="password")
+        if override_pass == OVERRIDE_PASSWORD:
+            st.success("✅ Senior Credentials Verified. Negative entry bypass authorized.")
+            is_authorized = True
+        else:
+            if override_pass != "":
+                st.error("❌ Invalid Override Passcode. Transaction blocked.")
+            is_authorized = False
+
     if st.button("Log Document Entry", type="primary"):
         if not ref_number.strip():
             st.error("Missing Reference Number!")
+        elif not is_authorized:
+            st.error("Transaction Blocked! You must provide a valid Senior Password Override to approve short-allocations.")
         else:
             new_entry = {
                 "Date & Time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -122,6 +144,9 @@ with tab2:
             }
             st.session_state.transfer_ledger = pd.concat([pd.DataFrame([new_entry]), st.session_state.transfer_ledger], ignore_index=True)
             st.success("Entry Logged!")
+            
+    st.markdown("---")
+    st.subheader("📋 Central Operations Ledger Log")
     st.dataframe(st.session_state.transfer_ledger, use_container_width=True, hide_index=True)
 
 # ==========================================
