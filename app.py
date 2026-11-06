@@ -192,5 +192,3 @@ with tab2:
                 "Doc Type": doc_type,
                 "Ref Number": cleaned_ref,
                 "From": from_loc,
-
-            
