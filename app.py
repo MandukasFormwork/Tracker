@@ -13,9 +13,9 @@ OVERRIDE_PASSWORD = "ADMIN"
 # --- INITIALIZE RELIABLE LOCAL STORAGE ---
 if "transfer_ledger" not in st.session_state:
     st.session_state.transfer_ledger = pd.DataFrame([
-        {"Date & Time": "2026-11-05 08:30", "Doc Type": "HD (Hire Delivery)", "Ref Number": "BOOK-1001", "From": "Durban Yard", "To": "Umhlanga Ridge Project", "Item": "Steel Props Size 2", "Qty": 450, "Driver/Manager": "A. Khumalo"},
-        {"Date & Time": "2026-11-05 14:15", "Doc Type": "HR (Hire Return)", "Ref Number": "BOOK-1002", "From": "Sandton Mall Job", "To": "Joburg Yard", "Item": "Kwikstage Standards 3.0m", "Qty": 150, "Driver/Manager": "J. Botha"},
-        {"Date & Time": "2026-11-06 10:00", "Doc Type": "TRF (Transfer Note)", "Ref Number": "BOOK-1003", "From": "Umhlanga Ridge Project", "To": "Ballito Junction Site", "Item": "Steel Props Size 2", "Qty": 200, "Driver/Manager": "S. Govender"}
+        {"Date & Time": "2026-11-05 08:30", "Doc Type": "HD (Hire Delivery)", "Ref Number": "HD-9821", "From": "Durban Yard", "To": "Umhlanga Ridge Project", "Item": "Steel Props Size 2", "Qty": 450, "Driver/Manager": "A. Khumalo"},
+        {"Date & Time": "2026-11-05 14:15", "Doc Type": "HR (Hire Return)", "Ref Number": "HR-4402", "From": "Sandton Mall Job", "To": "Joburg Yard", "Item": "Kwikstage Standards 3.0m", "Qty": 150, "Driver/Manager": "J. Botha"},
+        {"Date & Time": "2026-11-06 10:00", "Doc Type": "TRF (Transfer Note)", "Ref Number": "TRF-0911", "From": "Umhlanga Ridge Project", "To": "Ballito Junction Site", "Item": "Steel Props Size 2", "Qty": 200, "Driver/Manager": "S. Govender"}
     ])
 
 if "locations" not in st.session_state:
@@ -72,22 +72,22 @@ with tab1:
         st.dataframe(ledger_df, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 2: RECORD NOTE (ZERO TYPING CAPTURE METHOD)
+# TAB 2: RECORD NOTE (IRONCLAD DUPLICATION SAFEQUARD)
 # ==========================================
 with tab2:
     st.header("📝 Record Physical Logbook Entry")
-    st.markdown("*Click selections directly below. Typing is disabled to prevent system locks.*")
+    st.markdown("*Type the exact serial references directly from your hand-written delivery and return paper books.*")
     
-    msg_box = st.container()
+    # Message banner box pinned at the absolute top of the sheet view
+    status_msg = st.container()
 
     col1, col2, col3 = st.columns(3)
     with col1:
         doc_type = st.selectbox("Select Document Type:", ["HD (Hire Delivery)", "HR (Hire Return)", "TRF (Transfer Note)"])
     with col2:
-        # Pre-generated selections to bypass keyboard interaction completely
-        ref_number = st.selectbox("Physical Book Leaf / Note Number Serial:", [f"NOTE-{x}" for x in range(1000, 1050)])
+        ref_number = st.text_input("Type Paper Book Note Reference #:", value="", placeholder="e.g., HD-6969, TRF-1024", key="raw_ref_box")
     with col3:
-        driver_auth = st.selectbox("Driver Name / Yard Manager Initial:", ["Yard Team Durban", "Yard Team Joburg", "Ashley", "A. Khumalo", "J. Botha"])
+        driver_auth = st.text_input("Type Driver Name / Initial:", value="", placeholder="e.g., Ashley, Khumalo", key="raw_auth_box")
         
     st.markdown("---")
     col4, col5, col6 = st.columns(3)
@@ -98,20 +98,39 @@ with tab2:
     with col6:
         selected_item = st.selectbox("Select Material Type:", st.session_state.inventory_items, key="item_loc")
         
-    # Standard numerical increments to remove text focus holds completely
-    qty = st.number_input("Count of Units:", min_value=1, max_value=5000, value=50, step=25, key="qty_loc")
-    override_pass = st.selectbox("Director Authorization Status:", ["Standard Field Operator", "Apply ADMIN Override Pass"])
+    qty = st.number_input("Count of Physical Units:", min_value=1, max_value=100000, value=100, step=50, key="qty_loc")
+    override_pass = st.text_input("🔒 Password Override for Negative Balance Bypasses:", type="password", key="pass_loc")
     
     if st.button("Log Document Entry", type="primary", key="submit_action_btn"):
-        with msg_box:
-            if from_loc == to_loc:
+        cleaned_ref = ref_number.strip().upper()
+        current_ledger = pd.DataFrame(st.session_state.transfer_ledger)
+        
+        # Absolute bulletproof verification mapping checking list conversion
+        existing_refs = [str(x).upper() for x in current_ledger["Ref Number"].tolist()]
+        is_duplicate = (cleaned_ref in existing_refs) and (cleaned_ref != "")
+            
+        available_stock = get_site_balance(from_loc, selected_item)
+        has_deficit = "Yard" not in from_loc and qty > available_stock
+        
+        with status_msg:
+            if not ref_number.strip():
+                st.error("❌ Rejected! Missing Reference Number from the paper book.")
+            elif from_loc == to_loc:
                 st.error("❌ Format Error! Source and Destination cannot be the same site location.")
+            elif is_duplicate:
+                st.error(f"❌ Transaction Blocked! Note reference number '{cleaned_ref}' has ALREADY been used and allocated in the system ledger. Moenie n dom POES wees nie!!")
+            elif has_deficit and override_pass != OVERRIDE_PASSWORD:
+                st.error(f"❌ Blocked! '{from_loc}' only holds {available_stock} units. Senior Password Override required.")
             else:
                 time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                new_row = {"Date & Time": time_now, "Doc Type": doc_type, "Ref Number": ref_number, "From": from_loc, "To": to_loc, "Item": selected_item, "Qty": int(qty), "Driver/Manager": driver_auth}
-                st.session_state.transfer_ledger = pd.concat([pd.DataFrame([new_row]), st.session_state.transfer_ledger], ignore_index=True)
-                st.success(f"🎉 Captured! Note {ref_number} written into records. Check Tab 1 to see balances change instantly.")
+                manager_initial = driver_auth.strip() if driver_auth.strip() else "Yard Ops"
                 
+                # Direct safe injection row execution
+                new_row = pd.DataFrame([{"Date & Time": time_now, "Doc Type": doc_type, "Ref Number": cleaned_ref, "From": from_loc, "To": to_loc, "Item": selected_item, "Qty": int(qty), "Driver/Manager": manager_initial}])
+                st.session_state.transfer_ledger = pd.concat([new_row, st.session_state.transfer_ledger], ignore_index=True)
+                st.success(f"🎉 Successfully Captured! Note {cleaned_ref} has been officially committed to the tracking ledger.")
+                st.rerun()
+
     st.markdown("---")
     st.subheader("📋 Central Operations Ledger Log (Live Entries)")
     st.dataframe(st.session_state.transfer_ledger, use_container_width=True, hide_index=True)
@@ -124,15 +143,15 @@ with tab3:
     reg_col1, reg_col2 = st.columns(2)
     with reg_col1:
         st.subheader("➕ Add Sites/Yards")
-        new_site = st.selectbox("Quick Add Pre-formatted Job Names:", ["Cape Town Yard", "Pinetown Project", "Umhlanga Phase 2"])
+        new_site = st.text_input("Create New Site / Yard Name:", key="new_site_box")
         if st.button("Add Location"):
-            if new_site not in st.session_state.locations:
-                st.session_state.locations.append(new_site)
+            if new_site.strip() and new_site.strip() not in st.session_state.locations:
+                st.session_state.locations.append(new_site.strip())
                 st.success("Location Added!")
     with reg_col2:
         st.subheader("📦 Add Individual Stock Types Manually")
-        new_product = st.selectbox("Quick Add Pre-formatted Fleet Items:", ["Kwikstage Standards 2.0m", "Heavy Duty Jack Base", "Swivel Couplers"])
+        new_product = st.text_input("Enter New Component Description:", key="new_prod_box")
         if st.button("Register New Item"):
-            if new_product not in st.session_state.inventory_items:
-                st.session_state.inventory_items.append(new_product)
+            if new_product.strip() and new_product.strip() not in st.session_state.inventory_items:
+                st.session_state.inventory_items.append(new_product.strip())
                 st.success("Item Registered!")
