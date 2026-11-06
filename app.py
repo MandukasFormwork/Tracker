@@ -184,9 +184,8 @@ with tab3:
             
             if matched_col:
                 imported_items = df_excel[matched_col].dropna().astype(str).str.strip().unique()
-                count_added = 0
-                for row_item in imported_items:
-                    if row_item not in st.session_state.inventory_items and row_item.strip() != "":
-                        st.session_state.inventory_items.append(row_item.strip())
-                        count_added += 1
-                if count_added > 0:
+                # Simplified, flat loop logic to prevent Indentation Errors completely
+                new_additions = [x for x in imported_items if x not in st.session_state.inventory_items and x.strip() != ""]
+                
+                if len(new_additions) > 0:
+                    st.session_state.inventory_items.extend(new_additions)
