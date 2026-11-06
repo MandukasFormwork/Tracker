@@ -110,12 +110,10 @@ with tab2:
         selected_item = st.selectbox("Select Material Type:", st.session_state.inventory_items)
     qty = st.number_input("Count of Units:", min_value=1, value=50, step=1)
     
-    # Dynamic Duplication Check
     cleaned_ref = ref_number.strip().upper()
     existing_refs = list(st.session_state.transfer_ledger["Ref Number"].unique())
     is_duplicate = cleaned_ref in existing_refs and cleaned_ref != ""
     
-    # Pre-check available quantities
     available_stock = get_site_balance(from_loc, selected_item)
     has_deficit = ("Yard" not in from_loc) and (qty > available_stock)
     
@@ -166,21 +164,18 @@ with tab2:
 with tab3:
     st.header("⚙️ Core Database Control Panel")
     
-    # --- BRAND NEW EXCEL UPLOADER MODULE ---
     st.subheader("📥 Bulk Import Stock Fleet via Excel Spreadsheet")
-    st.markdown("Have your team compile your inventory components into Excel with a column heading titled **`Item Description`**. Drop the file below to populate your app dropdown options instantly.")
+    st.markdown("Have your team compile your inventory components into Excel with a column heading titled **`Item Description`**.")
     
     uploaded_file = st.file_uploader("Choose an Excel or CSV spreadsheet file:", type=["xlsx", "csv"])
     
     if uploaded_file is not None:
         try:
-            # Read file type accurately
             if uploaded_file.name.endswith(".xlsx"):
                 df_excel = pd.read_excel(uploaded_file)
             else:
                 df_excel = pd.read_csv(uploaded_file)
                 
-            # Search for standard column headers flexibly
             matched_col = None
             for col in df_excel.columns:
                 if "description" in str(col).lower() or "item" in str(col).lower() or "product" in str(col).lower():
@@ -188,7 +183,10 @@ with tab3:
                     break
             
             if matched_col:
-                # Strip out unique descriptions cleanly and filter duplicates
                 imported_items = df_excel[matched_col].dropna().astype(str).str.strip().unique()
                 count_added = 0
-                for item in imported_items:
+                for row_item in imported_items:
+                    if row_item not in st.session_state.inventory_items and row_item.strip() != "":
+                        st.session_state.inventory_items.append(row_item.strip())
+                        count_added += 1
+                if count_added > 0:
