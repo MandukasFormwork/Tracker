@@ -10,13 +10,7 @@ st.markdown("### Physical Logbook Matching & Site Allocation System")
 # --- MASTER CONFIG CONSTANTS ---
 OVERRIDE_PASSWORD = "ADMIN"
 
-# --- INITIALIZE REGISTRIES IN SESSION STATE ---
-if "locations" not in st.session_state:
-    st.session_state.locations = ["Durban Yard", "Joburg Yard", "Umhlanga Ridge Project", "Ballito Junction Site", "Sandton Mall Job"]
-
-if "inventory_items" not in st.session_state:
-    st.session_state.inventory_items = ["Kwikstage Standards 3.0m", "Kwikstage Ledgers 2.5m", "Steel Props Size 2", "H20 Timber Beams", "Formwork Plywood Boards"]
-
+# --- INITIALIZE RELIABLE LOCAL STORAGE ---
 if "transfer_ledger" not in st.session_state:
     st.session_state.transfer_ledger = pd.DataFrame([
         {"Date & Time": "2026-11-05 08:30", "Doc Type": "HD (Hire Delivery)", "Ref Number": "HD-9821", "From": "Durban Yard", "To": "Umhlanga Ridge Project", "Item": "Steel Props Size 2", "Qty": 450, "Driver/Manager": "A. Khumalo"},
@@ -24,17 +18,24 @@ if "transfer_ledger" not in st.session_state:
         {"Date & Time": "2026-11-06 10:00", "Doc Type": "TRF (Transfer Note)", "Ref Number": "TRF-0911", "From": "Umhlanga Ridge Project", "To": "Ballito Junction Site", "Item": "Steel Props Size 2", "Qty": 200, "Driver/Manager": "S. Govender"}
     ])
 
+if "locations" not in st.session_state:
+    st.session_state.locations = ["Durban Yard", "Joburg Yard", "Umhlanga Ridge Project", "Ballito Junction Site", "Sandton Mall Job"]
+
+if "inventory_items" not in st.session_state:
+    st.session_state.inventory_items = ["Kwikstage Standards 3.0m", "Kwikstage Ledgers 2.5m", "Steel Props Size 2", "H20 Timber Beams", "Formwork Plywood Boards"]
+
 # --- STOCK CALCULATION LOGIC ---
 def get_site_balance(location, item):
     ledger = pd.DataFrame(st.session_state.transfer_ledger)
-    if ledger.empty:
-        return 0
+    if ledger.empty or "From" not in ledger.columns:
+        return 10000 if "Yard" in location else 0
+    ledger["Qty"] = pd.to_numeric(ledger["Qty"], errors='coerce').fillna(0)
     total_in = ledger[(ledger["To"] == location) & (ledger["Item"] == item)]["Qty"].sum()
     total_out = ledger[(ledger["From"] == location) & (ledger["Item"] == item)]["Qty"].sum()
     initial_stock = 10000 if "Yard" in location else 0
-    return (initial_stock + total_in) - total_out
+    return int((initial_stock + total_in) - total_out)
 
-# --- BULK FILE EXCEL PARSER FUNCTION ---
+# --- BULK FILE EXCEL PARSER ---
 def process_bulk_file(uploaded_file):
     try:
         if uploaded_file.name.endswith(".xlsx"):
@@ -51,11 +52,9 @@ def process_bulk_file(uploaded_file):
             new_additions = [x for x in imported_items if x not in st.session_state.inventory_items and x.strip() != ""]
             if len(new_additions) > 0:
                 st.session_state.inventory_items.extend(new_additions)
-                st.success(f"🎉 Success! Imported {len(new_additions)} brand new variants!")
-            else:
-                st.info("Spreadsheet parsed successfully, but all components are already present.")
+                st.success(f"🎉 Imported {len(new_additions)} brand new variants!")
         else:
-            st.error("❌ Format Error! Missing description column header.")
+            st.error("❌ Column header missing.")
     except Exception as e:
         st.error(f"Error parsing file: {str(e)}")
 
@@ -89,7 +88,6 @@ with tab1:
             balances.append({"Equipment Item": item, "Current Balance On-Site": current_bal})
         st.dataframe(pd.DataFrame(balances), use_container_width=True, hide_index=True)
         
-        # LOCALIZED SITE DRILL-DOWN REPORT ZONE
         st.markdown("---")
         st.markdown(f"##### 📜 History Log for Specific Gear at **{selected_location}**")
         audit_item = st.selectbox("Select an item above to see its localized movements:", st.session_state.inventory_items, key="local_audit_box")
@@ -98,8 +96,6 @@ with tab1:
             local_history = ledger_df[(ledger_df["Item"] == audit_item) & ((ledger_df["From"] == selected_location) | (ledger_df["To"] == selected_location))]
             if not local_history.empty:
                 st.dataframe(local_history, use_container_width=True, hide_index=True)
-            else:
-                st.info(f"No recorded movements for '{audit_item}' on the '{selected_location}' logs yet.")
 
     st.markdown("---")
     st.header("📜 Global Paper Trail Dispute Resolver")
@@ -126,12 +122,10 @@ with tab1:
             st.dataframe(filtered_history, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 2: RECORD NOTE (DIRECT INPUT REGIME)
+# TAB 2: RECORD NOTE (DIRECT CAPTURE ENGINE)
 # ==========================================
 with tab2:
     st.header("📝 Record Physical Delivery / Return Book Note")
-    
-    # Persistent status messaging container
     msg_box = st.container()
 
     col1, col2, col3 = st.columns(3)
@@ -156,9 +150,12 @@ with tab2:
     
     if st.button("Log Document Entry", type="primary", key="submit_action_btn"):
         cleaned_ref = ref_number.strip().upper()
-        existing_refs = list(st.session_state.transfer_ledger["Ref Number"].unique())
+        ledger_df = pd.DataFrame(st.session_state.transfer_ledger)
         
-        is_duplicate = cleaned_ref in existing_refs and cleaned_ref != ""
+        is_duplicate = False
+        if not ledger_df.empty and "Ref Number" in ledger_df.columns:
+            is_duplicate = cleaned_ref in list(ledger_df["Ref Number"].unique()) and cleaned_ref != ""
+            
         available_stock = get_site_balance(from_loc, selected_item)
         has_deficit = "Yard" not in from_loc and qty > available_stock
         
@@ -175,4 +172,5 @@ with tab2:
                 time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                 manager_initial = driver_auth.strip() if driver_auth.strip() else "System Auto"
                 
-                # Direct app append bypass row entry
+                new_row = {"Date & Time": time_now, "Doc Type": doc_type, "Ref Number": cleaned_ref, "From": from_loc, "To": to_loc, "Item": selected_item, "Qty": int(qty), "Driver/Manager": manager_initial}
+                st.session_state.transfer_ledger = pd.concat([pd.DataFrame([new_row]), st.session_state.transfer_ledger], ignore_index=True)
