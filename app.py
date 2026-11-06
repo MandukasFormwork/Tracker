@@ -34,7 +34,7 @@ def get_site_balance(location, item):
     return (initial_stock + total_in) - total_out
 
 # --- NAVIGATION TABS ---
-tab1, tab2, tab3 = st.tabs(["📊 Stock Levels & Global Search", "📝 Record Paper Book Note", "➕ Register New Projects/Yards"])
+tab1, tab2, tab3 = st.tabs(["📊 Stock Levels & Global Search", "📝 Record Paper Book Note", "⚙️ System Registries (Add Sites & Items)"])
 
 # ==========================================
 # TAB 1: LIVE SITE BALANCES & GLOBAL SEARCH
@@ -76,13 +76,11 @@ with tab1:
     st.header("📜 Paper Trail Dispute Resolver")
     st.markdown(f"Refine and audit the historical chain-of-custody log for: **{search_item}**")
     
-    # Extract baseline history for this item
     ledger_df = pd.DataFrame(st.session_state.transfer_ledger)
     if not ledger_df.empty:
         filtered_history = ledger_df[ledger_df["Item"] == search_item]
         
         if not filtered_history.empty:
-            # Generate the dynamic breakdown columns for dropdown selections
             st.markdown("#### 🛠️ Deep-Dive Column Dropdown Filters:")
             f_col1, f_col2, f_col3, f_col4 = st.columns(4)
             
@@ -102,7 +100,6 @@ with tab1:
                 unique_managers = ["Show All"] + list(filtered_history["Driver/Manager"].unique())
                 sel_manager = st.selectbox("Filter by Driver/Manager:", unique_managers)
             
-            # Apply individual dropdown filters iteratively if modified
             if sel_doc != "Show All":
                 filtered_history = filtered_history[filtered_history["Doc Type"] == sel_doc]
                 
@@ -115,7 +112,6 @@ with tab1:
             if sel_manager != "Show All":
                 filtered_history = filtered_history[filtered_history["Driver/Manager"] == sel_manager]
             
-            # Display Final Filtered Data
             st.markdown("##### Filtered Book Records Ledger Result:")
             if not filtered_history.empty:
                 st.dataframe(filtered_history, use_container_width=True, hide_index=True)
@@ -184,11 +180,16 @@ with tab2:
     st.dataframe(st.session_state.transfer_ledger, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 3: LOCATION REGISTRY
+# TAB 3: SYSTEM REGISTRIES (LOCATIONS & STOCK ITEMS)
 # ==========================================
 with tab3:
-    st.header("➕ Expand Tracking Network")
-    new_site = st.text_input("Create New Site / Yard Name:")
-    if st.button("Add Location to Registry"):
-        if new_site.strip() and new_site.strip() not in st.session_state.locations:
-            st.session_state.locations.append(new_site.strip())
+    st.header("⚙️ Core Database Control Panel")
+    st.markdown("Scale up your yards, project locations, and physical fleet variants instantly without entering code lines.")
+    
+    reg_col1, reg_col2 = st.columns(2)
+    
+    # Left Box: Location Controls
+    with reg_col1:
+        st.subheader("➕ Expand Tracking Network (Sites/Yards)")
+        new_site = st.text_input("Create New Site / Yard Name:", placeholder="e.g., Umhlanga Phase 2 Job")
+        if st.button("Add Location to Registry"):
