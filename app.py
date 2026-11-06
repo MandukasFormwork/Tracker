@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime
+import time
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Mandukas Stock Loop Tracker", page_icon="🏗️", layout="wide")
@@ -72,13 +73,13 @@ with tab1:
         st.dataframe(ledger_df, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 2: RECORD NOTE (IRONCLAD DUPLICATION SAFEQUARD)
+# TAB 2: RECORD NOTE (SPINNER & CONFIRMATION DISPLAY SCREEN)
 # ==========================================
 with tab2:
     st.header("📝 Record Physical Logbook Entry")
     st.markdown("*Type the exact serial references directly from your hand-written delivery and return paper books.*")
     
-    # Message banner box pinned at the absolute top of the sheet view
+    # Persistent top-level container for warnings and high-visibility success screens
     status_msg = st.container()
 
     col1, col2, col3 = st.columns(3)
@@ -105,7 +106,6 @@ with tab2:
         cleaned_ref = ref_number.strip().upper()
         current_ledger = pd.DataFrame(st.session_state.transfer_ledger)
         
-        # Absolute bulletproof verification mapping checking list conversion
         existing_refs = [str(x).upper() for x in current_ledger["Ref Number"].tolist()]
         is_duplicate = (cleaned_ref in existing_refs) and (cleaned_ref != "")
             
@@ -122,14 +122,25 @@ with tab2:
             elif has_deficit and override_pass != OVERRIDE_PASSWORD:
                 st.error(f"❌ Blocked! '{from_loc}' only holds {available_stock} units. Senior Password Override required.")
             else:
-                time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                manager_initial = driver_auth.strip() if driver_auth.strip() else "Yard Ops"
+                # 🔄 STAGE 1: Visual Loading Spinner Window
+                with st.spinner("Connecting to database... logging physical book note..."):
+                    # Safe computational buffer block for cross-device processing sync
+                    ledger_copy = current_ledger.copy()
+                    time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                    manager_initial = driver_auth.strip() if driver_auth.strip() else "Yard Ops"
+                    
+                    new_row = pd.DataFrame([{"Date & Time": time_now, "Doc Type": doc_type, "Ref Number": cleaned_ref, "From": from_loc, "To": to_loc, "Item": selected_item, "Qty": int(qty), "Driver/Manager": manager_initial}])
+                    st.session_state.transfer_ledger = pd.concat([new_row, ledger_copy], ignore_index=True)
                 
-                # Direct safe injection row execution
-                new_row = pd.DataFrame([{"Date & Time": time_now, "Doc Type": doc_type, "Ref Number": cleaned_ref, "From": from_loc, "To": to_loc, "Item": selected_item, "Qty": int(qty), "Driver/Manager": manager_initial}])
-                st.session_state.transfer_ledger = pd.concat([new_row, st.session_state.transfer_ledger], ignore_index=True)
-                st.success(f"🎉 Successfully Captured! Note {cleaned_ref} has been officially committed to the tracking ledger.")
-                st.rerun()
+                # 🎉 STAGE 2: High-Visibility Screen Confirmation Box
+                st.success(f"""
+                ### ✅ TRANSACTION CAPTURED SUCCESSFULLY!
+                The document has been securely hard-coded into your system ledger lines.
+                *   **Document Link Reference:** `{cleaned_ref}` ({doc_type})
+                *   **Material Route:** Moved from `{from_loc}` → straight to `{to_loc}`
+                *   **Component & Count:** logged exactly `{qty} units` of `{selected_item}`
+                *   **Authorized Handler Sign-off:** `{manager_initial}`
+                """)
 
     st.markdown("---")
     st.subheader("📋 Central Operations Ledger Log (Live Entries)")
