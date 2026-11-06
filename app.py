@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime
+import time
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Mandukas Stock Loop Tracker", page_icon="🏗️", layout="wide")
@@ -122,7 +123,7 @@ with tab1:
             st.dataframe(filtered_history, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 2: RECORD NOTE (DIRECT CAPTURE ENGINE)
+# TAB 2: RECORD NOTE (SPINNING WHEEL CONFIRMATION)
 # ==========================================
 with tab2:
     st.header("📝 Record Physical Delivery / Return Book Note")
@@ -169,8 +170,9 @@ with tab2:
             elif has_deficit and override_pass != OVERRIDE_PASSWORD:
                 st.error(f"❌ Blocked! '{from_loc}' only holds {available_stock} units. Senior Password Override required.")
             else:
-                time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                manager_initial = driver_auth.strip() if driver_auth.strip() else "System Auto"
-                
-                new_row = {"Date & Time": time_now, "Doc Type": doc_type, "Ref Number": cleaned_ref, "From": from_loc, "To": to_loc, "Item": selected_item, "Qty": int(qty), "Driver/Manager": manager_initial}
-                st.session_state.transfer_ledger = pd.concat([pd.DataFrame([new_row]), st.session_state.transfer_ledger], ignore_index=True)
+                # 🚨 VISUAL SPINNER WHEEL ACTIVATED HERE 🚨
+                with st.spinner("Locking physical book note into system database ledger..."):
+                    time.sleep(1.0) # Short artificial delay so they see the wheel spin
+                    time_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                    manager_initial = driver_auth.strip() if driver_auth.strip() else "System Auto"
+                    
