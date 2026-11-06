@@ -127,7 +127,7 @@ with tab1:
             st.dataframe(filtered_history, use_container_width=True, hide_index=True)
 
 # ==========================================
-# TAB 2: RECORD NOTE (FLATTENED VALIDATION LOGIC)
+# TAB 2: RECORD NOTE
 # ==========================================
 with tab2:
     st.header("📝 New Logbook Entry")
@@ -151,7 +151,6 @@ with tab2:
     cleaned_ref = ref_number.strip().upper()
     existing_refs = list(st.session_state.transfer_ledger["Ref Number"].unique())
     
-    # Run safety checks cleanly using sequential flags
     is_duplicate = False
     if cleaned_ref in existing_refs:
         if cleaned_ref != "":
@@ -163,7 +162,6 @@ with tab2:
         if qty > available_stock:
             has_deficit = True
 
-    # Render error windows cleanly with zero structural nesting
     is_authorized = True
     if is_duplicate:
         st.error(f"❌ Transaction Blocked! Note reference number '{cleaned_ref}' has ALREADY been used and allocated in the system ledger. Moenie n dom POES wees nie!!")
@@ -192,3 +190,6 @@ with tab2:
                 "Doc Type": doc_type,
                 "Ref Number": cleaned_ref,
                 "From": from_loc,
+                "To": to_loc,
+                "Item": selected_item,
+                "Qty": int(qty),
